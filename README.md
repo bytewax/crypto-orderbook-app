@@ -139,9 +139,9 @@ We have successfully created a websocket connection, built our orderbook and the
 https://github.com/bytewax/crypto-orderbook-app/blob/e3dbb71986184a0c855b92f4726aaaa9246161c6/dataflow.py#L122-L124
 
 ## **Executing the Dataflow**
-[Bytewax provides a few different entry points for executing a dataflow](/docs/getting-started/execution/). In this example, we are using the `spawn_cluster` method. What this will do is create the number of worker threads and processes as described. This will create a separate websocket connection for each worker in this scenario because of the nature of websockets and the ability to parallelize them.
+[Bytewax provides a few different entry points for executing a dataflow](https://staging.bytewax.io/docs/getting-started/execution). In this example, we are using the `spawn_cluster` method. What this will do is create the number of worker threads and processes as configured in the command. This will create a separate websocket connection for each worker in this scenario because of the nature of websockets and the ability to parallelize them.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/e3dbb71986184a0c855b92f4726aaaa9246161c6/dataflow.py#L126-L127
+https://github.com/bytewax/crypto-orderbook-app/blob/9cfbfcfd7632e0723a191c2b4eb26949695860b8/dataflow.py#L125-L126
 
 Now we can build the Dockerfile and run the dataflow in a docker container with multiple processes. 
 

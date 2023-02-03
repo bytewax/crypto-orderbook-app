@@ -1,8 +1,8 @@
 import json
 
+from bytewax.dataflow import Dataflow
 from bytewax.execution import spawn_cluster
 from bytewax.inputs import ManualInputConfig
-from bytewax.dataflow import Dataflow
 from websocket import create_connection  # pip install websocket-client
 
 PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD"]
