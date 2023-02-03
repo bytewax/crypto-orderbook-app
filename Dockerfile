@@ -6,4 +6,4 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-ENTRYPOINT ["python", "dataflow.py"]
+ENTRYPOINT ["python", "dataflow.py", "-n 2"]
