@@ -1,6 +1,5 @@
 import json
 
-from bytewax import parse
 from bytewax.execution import spawn_cluster
 from bytewax.inputs import ManualInputConfig
 from bytewax.dataflow import Dataflow
@@ -124,4 +123,4 @@ from bytewax.outputs import StdOutputConfig
 flow.capture(StdOutputConfig())
 
 if __name__ == "__main__":
-    spawn_cluster(flow, **parse.cluster_args())
+    spawn_cluster(flow, proc_count = 2, worker_count_per_proc = 1,)
