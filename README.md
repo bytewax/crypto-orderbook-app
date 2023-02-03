@@ -1,4 +1,4 @@
-# Template for a sample app
+# Real-time Financial Exchange Order Book Application
 
 - Skill level
     
@@ -32,7 +32,7 @@ websocket-client
 
 - Resources
 - Concepts
-- Inputs & Outputs
+- Websocket Input
 - Constructing the Dataflow
 - Summary
 
@@ -57,38 +57,11 @@ An exchange will generally offer a few different tiers of information that trade
 
 Alright, let's get started!
 
-## ****Inputs & Outputs****
+## ****Websocket Input****
 
 We are going to eventually create a cluster of dataflows where we could have multiple currency pairs running in parallel on different workers. In order to follow this approach, we will use the [`spawn_cluster`](/apidocs#bytewax.spawn_cluster) method of kicking off our dataflow. To start, we will build a websocket input function that will use the coinbase pro websocket url (`wss://ws-feed.pro.coinbase.com`) and the Python websocket library to create a connection. Once connected we can send a message to the websocket subscribing to product_ids (pairs of currencies - USD-BTC for this example) and channels (level2 order book data). Finally since we know there will be some sort of acknowledgement message we can grab that with `ws.recv()` and print it out.
 
-```python
-import json
-from bytewax.inputs import ManualInputConfig
-from bytewax.outputs import ManualOutputConfig
-
-PRODUCT_IDS = ["BTC-USD", "ETH-USD"]
-```
-
-```python
-from websocket import create_connection
-
-
-def ws_input(product_ids):
-    state = None
-    ws = create_connection("wss://ws-feed.pro.coinbase.com")
-    ws.send(
-        json.dumps(
-            {
-                "type": "subscribe",
-                "product_ids": product_ids,
-                "channels": ["level2"],
-            }
-        )
-    )
-    print(ws.recv())
-    while True:
-        yield state, ws.recv()
-```
+https://github.com/bytewax/crypto-orderbook-app/blob/77e2591d9c017287bbb5513cc32ceb2c94fdd7f3/dataflow.py#L8-L27
 
 For testing purposes, if you don't want to perform HTTP requests, you can read the sample websocket data from a local file with a list of JSON responses.
 
@@ -101,37 +74,15 @@ def ws_input(product_ids, state):
         yield state, msg
 ```
 
-Now that we have our websocket based data generator built, we will write an input builder for our dataflow. Since we're using a manual input builder, we'll pass a `ManualInputConfig` as our `input_config` with the builder as a parameter. The input builder is called on each worker and the function will have information about the `worker_index` and the total number of workers (`worker_count`). In this case we are designing our input builder to handle multiple workers and multiple currency pairs, so that we can parallelize the input. So we will distribute the currency pairs with the logic in the code below. It should be noted that if you run more than one worker with only one currency pair, the other workers will not be used.
+Now that we have our websocket based data generator built, we will write an input builder for our dataflow. Since we're using a manual input builder, we'll pass a `ManualInputConfig` as our `input` with the builder as a parameter. The input builder is called on each worker and the function will have information about the `worker_index` and the total number of workers (`worker_count`). In this case we are designing our input builder to handle multiple workers and multiple currency pairs, so that we can parallelize the input. So we will distribute the currency pairs with the logic in the code below. It should be noted that if you run more than one worker with only one currency pair, the other workers will not be used.
 
-```python
-from bytewax.inputs import ManualInputConfig
-
-
-def input_builder(worker_index, worker_count, resume_state):
-    # We're not going to worry about stateful recovery in this example.
-    state = None
-    prods_per_worker = int(len(PRODUCT_IDS) / worker_count)
-    product_ids = PRODUCT_IDS[
-        int(worker_index * prods_per_worker) : int(
-            worker_index * prods_per_worker + prods_per_worker
-        )
-    ]
-    return ws_input(product_ids, state)
-
-
-input_config = ManualInputConfig(input_builder)
-```
+https://github.com/bytewax/crypto-orderbook-app/blob/77e2591d9c017287bbb5513cc32ceb2c94fdd7f3/dataflow.py#L30-L38
 
 Now that we have our input builder finished, we can create our output builder. The output builder is used in conjunction with `spawn_cluster`. In a dataflow, when you use the `capture` operator, the output_builder is called and will receive information about the worker and the data. For this example, we keep it simple, we are just going to print out the result of our dataflow to the terminal.
 
-```python
-def output_builder(worker_index, worker_count):
-    return print
-```
-
 ## Constructing The Dataflow
 
-Before we get to the exciting part of our order book dataflow we need to prep the data. We initially receive some JSON formatted text, so we will first deserialize the JSON we are receiving from the websocket into a dictionary. Once deserialized, we can reformat the data to be a tuple of the shape (product_id, data). This will permit us to aggregate by the product_id as our key in the next step.
+Before we get to the exciting part of our order book dataflow we need to create our dataflow object and prep the data. We start with creating the dataflow object, specifying the input we built above and then we will add two map operators. The first will deserialize the JSON we are receiving from the websocket into a dictionary. Once deserialized, we can reformat the data to be a tuple of the shape (product_id, data). This will permit us to aggregate by the product_id as our key in the next step.
 
 ```python
 from bytewax.dataflow import Dataflow
@@ -140,9 +91,6 @@ from bytewax.dataflow import Dataflow
 def key_on_product(data):
     return (data["product_id"], data)
 
-
-flow = Dataflow()
-flow.input("input", ManualInputConfig(input_builder))
 flow.map(json.loads)
 # {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'}
 flow.map(key_on_product)

@@ -1,15 +1,12 @@
 import json
 
-from websocket import create_connection  # pip install websocket-client
-
 from bytewax import parse
-from bytewax.dataflow import Dataflow
 from bytewax.execution import spawn_cluster
 from bytewax.inputs import ManualInputConfig
-from bytewax.outputs import StdOutputConfig
+from bytewax.dataflow import Dataflow
+from websocket import create_connection  # pip install websocket-client
 
 PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD"]
-
 def ws_input(product_ids, state):
     ws = create_connection("wss://ws-feed.pro.coinbase.com")
     ws.send(
@@ -38,8 +35,17 @@ def input_builder(worker_index, worker_count, resume_state):
     return ws_input(product_ids, state)
 
 
+flow = Dataflow()
+flow.input("input", ManualInputConfig(input_builder))
+
+
 def key_on_product(data):
     return (data["product_id"], data)
+
+flow.map(json.loads)
+# {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'}
+flow.map(key_on_product)
+# ('BTC-USD', {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'})
 
 
 class OrderBook:
@@ -107,18 +113,14 @@ class OrderBook:
             "spread": self.ask_price - self.bid_price,
         }
 
-
-flow = Dataflow()
-flow.input("input", ManualInputConfig(input_builder))
-flow.map(json.loads)
-# {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'}
-flow.map(key_on_product)
-# ('BTC-USD', {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'})
 flow.stateful_map("order_book", lambda: OrderBook(), OrderBook.update)
 # ('BTC-USD', (36905.39, 0.00334873, 36905.4, 1.6e-05, 0.010000000002037268))
 flow.filter(
     lambda x: x[-1]["spread"] / x[-1]["ask"] > 0.0001
 )  # filter on 0.1% spread as a per
+
+from bytewax.outputs import StdOutputConfig
+
 flow.capture(StdOutputConfig())
 
 if __name__ == "__main__":
