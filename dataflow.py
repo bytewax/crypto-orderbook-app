@@ -2,41 +2,44 @@ import json
 
 from bytewax.dataflow import Dataflow
 from bytewax.execution import spawn_cluster
-from bytewax.inputs import ManualInputConfig
+from bytewax.inputs import DynamicInput, StatelessSource
+from bytewax.connectors.stdio import StdOutput
 from websocket import create_connection  # pip install websocket-client
 
-PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD"]
-def ws_input(product_ids, state):
-    ws = create_connection("wss://ws-feed.pro.coinbase.com")
-    ws.send(
-        json.dumps(
-            {
-                "type": "subscribe",
-                "product_ids": product_ids,
-                "channels": ["level2"],
-            }
+class CoinbaseSource(StatelessSource):
+    def __init__(self, product_ids):
+        self.product_ids = product_ids
+
+        self.ws = create_connection("wss://ws-feed.pro.coinbase.com")
+        self.ws.send(
+            json.dumps(
+                {
+                    "type": "subscribe",
+                    "product_ids": product_ids,
+                    "channels": ["level2"],
+                }
+            )
         )
-    )
-    # The first msg is just a confirmation that we have subscribed.
-    print(ws.recv())
-    while True:
-        yield state, ws.recv()
+        # The first msg is just a confirmation that we have subscribed.
+        print(self.ws.recv())
 
+    def next(self):
+        return self.ws.recv()
 
-def input_builder(worker_index, worker_count, resume_state):
-    state = resume_state or None
-    prods_per_worker = int(len(PRODUCT_IDS) / worker_count)
-    product_ids = PRODUCT_IDS[
-        int(worker_index * prods_per_worker) : int(
-            worker_index * prods_per_worker + prods_per_worker
-        )
-    ]
-    return ws_input(product_ids, state)
+class CoinbaseInput(DynamicInput):
+    PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD"]
 
+    def build(self, worker_index, worker_count):
+        prods_per_worker = int(len(self.PRODUCT_IDS) / worker_count)
+        product_ids = self.PRODUCT_IDS[
+            int(worker_index * prods_per_worker) : int(
+                worker_index * prods_per_worker + prods_per_worker
+            )
+        ]
+        return CoinbaseSource(product_ids)
 
 flow = Dataflow()
-flow.input("input", ManualInputConfig(input_builder))
-
+flow.input("input", CoinbaseInput())
 
 def key_on_product(data):
     return (data["product_id"], data)
@@ -49,7 +52,6 @@ flow.map(key_on_product)
 
 class OrderBook:
     def __init__(self):
-        # if using Python < 3.7 need to use OrderedDict here
         self.bids = {}
         self.asks = {}
 
@@ -118,9 +120,7 @@ flow.filter(
     lambda x: x[-1]["spread"] / x[-1]["ask"] > 0.0001
 )  # filter on 0.1% spread as a per
 
-from bytewax.outputs import StdOutputConfig
-
-flow.capture(StdOutputConfig())
+flow.output("out", StdOutput())
 
 if __name__ == "__main__":
     spawn_cluster(flow, proc_count = 2, worker_count_per_proc = 1,)
