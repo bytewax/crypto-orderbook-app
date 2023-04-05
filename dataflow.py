@@ -1,8 +1,8 @@
 import json
 
 from bytewax.dataflow import Dataflow
-from bytewax.execution import spawn_cluster
 from bytewax.inputs import DynamicInput, StatelessSource
+from bytewax.testing import run_main
 from bytewax.connectors.stdio import StdOutput
 from websocket import create_connection  # pip install websocket-client
 
@@ -106,7 +106,7 @@ class OrderBook:
                     self.bids[price] = size
                     if price > self.bid_price:
                         self.bid_price = price
-        return self, {
+        return {
             "bid": self.bid_price,
             "bid_size": self.bids[self.bid_price],
             "ask": self.ask_price,
@@ -114,7 +114,11 @@ class OrderBook:
             "spread": self.ask_price - self.bid_price,
         }
 
-flow.stateful_map("order_book", lambda: OrderBook(), OrderBook.update)
+def update_orderbook(orderbook, new_order):
+    spread = orderbook.update(new_order)
+    return orderbook, spread
+
+flow.stateful_map("order_book", lambda: OrderBook(), update_orderbook)
 # ('BTC-USD', (36905.39, 0.00334873, 36905.4, 1.6e-05, 0.010000000002037268))
 flow.filter(
     lambda x: x[-1]["spread"] / x[-1]["ask"] > 0.0001
@@ -122,5 +126,5 @@ flow.filter(
 
 flow.output("out", StdOutput())
 
-if __name__ == "__main__":
-    spawn_cluster(flow, proc_count = 2, worker_count_per_proc = 1,)
+def get_flow():
+    return flow
