@@ -2,9 +2,9 @@ import json
 
 from bytewax.dataflow import Dataflow
 from bytewax.inputs import DynamicInput, StatelessSource
-from bytewax.testing import run_main
 from bytewax.connectors.stdio import StdOutput
 from websocket import create_connection  # pip install websocket-client
+
 
 class CoinbaseSource(StatelessSource):
     def __init__(self, product_ids):
@@ -26,6 +26,7 @@ class CoinbaseSource(StatelessSource):
     def next(self):
         return self.ws.recv()
 
+
 class CoinbaseInput(DynamicInput):
     PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD"]
 
@@ -38,14 +39,18 @@ class CoinbaseInput(DynamicInput):
         ]
         return CoinbaseSource(product_ids)
 
+
 flow = Dataflow()
 flow.input("input", CoinbaseInput())
+
+flow.map(json.loads)
+# {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'}
+
 
 def key_on_product(data):
     return (data["product_id"], data)
 
-flow.map(json.loads)
-# {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'}
+
 flow.map(key_on_product)
 # ('BTC-USD', {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'})
 
@@ -114,9 +119,11 @@ class OrderBook:
             "spread": self.ask_price - self.bid_price,
         }
 
+
 def update_orderbook(orderbook, new_order):
     spread = orderbook.update(new_order)
     return orderbook, spread
+
 
 flow.stateful_map("order_book", lambda: OrderBook(), update_orderbook)
 # ('BTC-USD', (36905.39, 0.00334873, 36905.4, 1.6e-05, 0.010000000002037268))
@@ -125,6 +132,3 @@ flow.filter(
 )  # filter on 0.1% spread as a per
 
 flow.output("out", StdOutput())
-
-def get_flow():
-    return flow
