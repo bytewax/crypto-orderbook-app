@@ -19,6 +19,7 @@ We are going to:
 ## ****Prerequisites****
 
 **Python modules**
+bytewax==0.16.*
 websocket-client
 
 ## Your Takeaway
@@ -61,19 +62,21 @@ Alright, let's get started!
 
 We are going to eventually create a cluster of dataflows where we could have multiple currency pairs running in parallel on different workers. To start, we will build a websocket input class will be able to handle multiple workers. To do so, we'll create a subclass of the Bytewax `StatelessSource`. In our `__init__` function, we connect to the coinbase pro websocket at (`wss://ws-feed.pro.coinbase.com`) using Python websocket library to create a connection. Once connected we can send a message to the websocket subscribing to the `product_ids` we were intialized with (pairs of currencies - USD-BTC for this example) and channels (level2 order book data). Finally since we know there will be some sort of acknowledgement message we can grab that with `ws.recv()` and print it out.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/main/dataflow.py#L9-L27
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L9-L27
 
 Now that we have our websocket based data generator built, we will our dataflow. Since we're using a `StatelessSource`, we'll create a `DynamicInput` subclass called `CoinbaseInput`. An instance of `CoinbaseInput` will be constructed on each worker. In the `build` method, we receive information about which worker we are: `worker_index` and the total number of workers (`worker_count`). We have added some custom code in order to distribute the currency pairs with the logic. It should be noted that if you run more than one worker with only one currency pair, the other workers will not be used.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/main/dataflow.py#L30-L40
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L30-L40
 
 ## Constructing The Dataflow
 
 Before we get to the exciting part of our order book dataflow, we need to create our Dataflow object and prep the data. We'll start with creating an empty `Dataflow` object and add the `CoinbaseSource` we created above.
 
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L43-L44
+
 Now that we have input for our Dataflow, we will specify some of the operations we want performed on our data. A `map` step is a one-to-one transformation step. The first `map` step will deserialize the JSON we are receiving from the websocket into a Python dictionary. Once deserialized, we can reformat the data to be a tuple of the shape (product_id, data). This will permit us to aggregate by the product_id as our key in the next step.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/main/dataflow.py#L48-L56
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L46-L55
 
 Now for the exciting part. The code below is what we are using to:
 1. Construct the orderbook as two dictionaries, one for asks and the other for bids.
@@ -115,19 +118,19 @@ To maintain an order book in real time, we will first need to construct an objec
 
 Below we have the code for the OrderBook object that has a bids and asks dictionary. These will be used to first create the order book from the snapshot and once created we can attain the first bid price and ask price. The bid price is the highest buy order placed and the ask price is the lowest sell order places. Once we have determined the bid and ask prices, we will be able to calculate the spread and track that as well.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/main/dataflow.py#L58-L120
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L58-L129
 
 With our snapshot processed, for each new message we receive from the websocket, we can update the order book the bid and ask price and the spread via the `update_orderbook` method. Sometimes an order was filled or it was cancelled and in this case what we receive from the update is something similar to `'changes': [['buy', '36905.39', '0.00000000']]`. When we receive these updates of size `'0.00000000'`, we can remove that item from our book and potentially update our bid and ask price. The code below will check if the order should be removed and if not it will update the order. If the order was removed, it will check to make sure the bid and ask prices are modified if required.
 
 Finishing it up, for fun we can filter for a spread as a percentage of the ask price greater than 0.1% and then capture the output. Maybe we can profit off of this spread... or maybe not.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/main/dataflow.py#L130-L132
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L130-L132
 
 ## **Output**
 
 We have successfully created a websocket connection, built our orderbook and then analyzed the order book, filtering down to the important spreads. The final steps are to configure some output and to run it. We will use the `output` operator, with the built-in `StdOutput` class to write to standard out.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/main/dataflow.py#L134
+https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L134
 
 ## **Executing the Dataflow**
 
