@@ -16,7 +16,7 @@ class CoinbaseSource(StatelessSource):
                 {
                     "type": "subscribe",
                     "product_ids": product_ids,
-                    "channels": ["level2"],
+                    "channels": ["level2_batch"],
                 }
             )
         )
