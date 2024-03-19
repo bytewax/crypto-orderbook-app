@@ -64,7 +64,7 @@ Alright, let's get started!
 
 Our goal is to build a scalable system that can monitor multiple cryptocurrency pairs across different workers in real time. We are going to build an asynchronous function that will connect to the Coinbase Pro websocket and then stream the data to our dataflow. We will use the `websockets` Python library to connect to the websocket and then we will use the `bytewax` library to stream the data to our dataflow.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/crypto-tutorial-0.18/dataflow.py#L15-L32
+https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L15-L31
 
 Now that we have our websocket based data generator built, we will our dataflow. Since we're using a `StatelessSource`, we'll create a `DynamicInput` subclass called `CoinbaseInput`. An instance of `CoinbaseInput` will be constructed on each worker. In the `build` method, we receive information about which worker we are: `worker_index` and the total number of workers (`worker_count`). We have added some custom code in order to distribute the currency pairs with the logic. It should be noted that if you run more than one worker with only one currency pair, the other workers will not be used.
 
