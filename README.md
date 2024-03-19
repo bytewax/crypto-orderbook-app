@@ -11,20 +11,22 @@
 In this example we are going to walk through how you can maintain a limit order book in real-time with very little extra infrastructure with Bytewax.
 
 We are going to:
-* Use websockets to connect to an exchange (coinbase)
-* Setup an order book using a snapshot
-* Update the order book in real-time
-* Use algorithms to trade crypto currencies and profit. Just kidding, this is left to an exercise for the reader.
+* Connect to Coinbase via WebSockets for live order book updates.
+* Initialize order books with current snapshots for major cryptocurrencies.
+* Update order books in real-time with market changes.
+* Utilize advanced data structures for efficient order book management.
+* Process live data with Bytewax to maintain and summarize order books.
+* Filter updates for significant market movements based on spread.
 
 ## ****Prerequisites****
 
 **Python modules**
-bytewax==0.16.*
+bytewax==0.18.*
 websocket-client
 
 ## Your Takeaway
 
-*At the end of this tutorial users will understand how to use Bytewax to analyze financial exchange data by connecting to a websocket and using Bytewax operators to maintain an order book and analyzing the orders.*
+*At the end of this tutorial you will understand how to use Bytewax to analyze financial exchange data. You will learn to establish connections to a WebSocket for real-time data, use Bytewax's operators to efficiently manage an order book, and apply analytical techniques to assess trading opportunities based on the dynamics of buy and sell orders.*
 
 ## Table of contents
 
@@ -60,7 +62,7 @@ Alright, let's get started!
 
 ## ****Websocket Input****
 
-We are going to eventually create a cluster of dataflows where we could have multiple currency pairs running in parallel on different workers. To start, we will build a websocket input class will be able to handle multiple workers. To do so, we'll create a subclass of the Bytewax `StatelessSource`. In our `__init__` function, we connect to the coinbase pro websocket at (`wss://ws-feed.pro.coinbase.com`) using Python websocket library to create a connection. Once connected we can send a message to the websocket subscribing to the `product_ids` we were intialized with (pairs of currencies - USD-BTC for this example) and channels (level2 order book data). Finally since we know there will be some sort of acknowledgement message we can grab that with `ws.recv()` and print it out.
+Our goal is to build a scalable system that can monitor multiple cryptocurrency pairs across different workers in real time. We are going to build an asynchronous function that will connect to the Coinbase Pro websocket and then stream the data to our dataflow. We will use the `websockets` Python library to connect to the websocket and then we will use the `bytewax` library to stream the data to our dataflow.
 
 https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L9-L27
 

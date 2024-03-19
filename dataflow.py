@@ -1,81 +1,98 @@
 import json
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from datetime import timedelta
+from typing import List, Optional
 
+# pip install websockets
+import websockets
+from bytewax import operators as op
+from bytewax.connectors.stdio import StdOutSink
 from bytewax.dataflow import Dataflow
-from bytewax.inputs import DynamicInput, StatelessSource
-from bytewax.connectors.stdio import StdOutput
-from websocket import create_connection  # pip install websocket-client
+from bytewax.inputs import FixedPartitionedSource, StatefulSourcePartition, batch_async
 
 
-class CoinbaseSource(StatelessSource):
-    def __init__(self, product_ids):
-        self.product_ids = product_ids
-
-        self.ws = create_connection("wss://ws-feed.pro.coinbase.com")
-        self.ws.send(
-            json.dumps(
-                {
-                    "type": "subscribe",
-                    "product_ids": product_ids,
-                    "channels": ["level2_batch"],
-                }
-            )
+async def _ws_agen(product_id):
+    url = "wss://ws-feed.exchange.coinbase.com"
+    async with websockets.connect(url) as websocket:
+        msg = json.dumps(
+            {
+                "type": "subscribe",
+                "product_ids": [product_id],
+                "channels": ["level2_batch"],
+            }
         )
+        await websocket.send(msg)
         # The first msg is just a confirmation that we have subscribed.
-        print(self.ws.recv())
+        await websocket.recv()
 
-    def next(self):
-        return self.ws.recv()
-
-
-class CoinbaseInput(DynamicInput):
-    PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD"]
-
-    def build(self, worker_index, worker_count):
-        prods_per_worker = int(len(self.PRODUCT_IDS) / worker_count)
-        product_ids = self.PRODUCT_IDS[
-            int(worker_index * prods_per_worker) : int(
-                worker_index * prods_per_worker + prods_per_worker
-            )
-        ]
-        return CoinbaseSource(product_ids)
+        while True:
+            msg = await websocket.recv()
+            yield (product_id, json.loads(msg))
 
 
-flow = Dataflow()
-flow.input("input", CoinbaseInput())
+class CoinbasePartition(StatefulSourcePartition):
+    def __init__(self, product_id):
+        agen = _ws_agen(product_id)
+        self._batcher = batch_async(agen, timedelta(seconds=0.5), 100)
 
-flow.map(json.loads)
-# {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'}
+    def next_batch(self, _sched):
+        return next(self._batcher)
 
-
-def key_on_product(data):
-    return (data["product_id"], data)
-
-
-flow.map(key_on_product)
-# ('BTC-USD', {'type': 'l2update', 'product_id': 'BTC-USD', 'changes': [['buy', '36905.39', '0.00334873']], 'time': '2022-05-05T17:25:09.072519Z'})
+    def snapshot(self):
+        return None
 
 
-class OrderBook:
-    def __init__(self):
-        self.bids = {}
-        self.asks = {}
+@dataclass
+class CoinbaseSource(FixedPartitionedSource):
+    product_ids: List[str]
+
+    def list_parts(self):
+        return self.product_ids
+
+    def build_part(self, step_id, for_key, _resume_state):
+        return CoinbasePartition(for_key)
+
+
+@dataclass(frozen=True)
+class OrderBookSummary:
+    bid_price: float
+    bid_size: float
+    ask_price: float
+    ask_size: float
+    spread: float
+
+
+@dataclass
+class OrderBookState:
+    bids: OrderedDict = field(default_factory=OrderedDict)
+    asks: OrderedDict = field(default_factory=OrderedDict)
+    bid_price: Optional[float] = None
+    ask_price: Optional[float] = None
 
     def update(self, data):
-        if self.bids == {}:
-            self.bids = {float(price): float(size) for price, size in data["bids"]}
-            # The bid_price is the highest priced buy limit order.
-            # since the bids are in order, the first item of our newly constructed bids
-            # will have our bid price, so we can track the best bid
+        if len(self.bids) <= 0:
+            self.bids = OrderedDict(
+                (float(price), float(size)) for price, size in data["bids"]
+            )
+        # The bid_price is the highest priced buy limit order.
+        # since the bids are in order, the first item of our newly constructed bids
+        # will have our bid price, so we can track the best bid
+        if self.bid_price is None:
             self.bid_price = next(iter(self.bids))
-        if self.asks == {}:
-            self.asks = {float(price): float(size) for price, size in data["asks"]}
-            # The ask price is the lowest priced sell limit order.
-            # since the asks are in order, the first item of our newly constructed
-            # asks will be our ask price, so we can track the best ask
+        if len(self.asks) <= 0:
+            self.asks = OrderedDict(
+                (float(price), float(size)) for price, size in data["asks"]
+            )
+        # The ask price is the lowest priced sell limit order.
+        # since the asks are in order, the first item of our newly constructed
+        # asks will be our ask price, so we can track the best ask
+        if self.ask_price is None:
             self.ask_price = next(iter(self.asks))
-        else:
-            # We receive a list of lists here, normally it is only one change,
-            # but could be more than one.
+
+        # We receive a list of lists here, normally it is only one change,
+        # but could be more than one.
+        if "changes" in data:
             for update in data["changes"]:
                 price = float(update[1])
                 size = float(update[2])
@@ -111,24 +128,49 @@ class OrderBook:
                     self.bids[price] = size
                     if price > self.bid_price:
                         self.bid_price = price
-        return {
-            "bid": self.bid_price,
-            "bid_size": self.bids[self.bid_price],
-            "ask": self.ask_price,
-            "ask_price": self.asks[self.ask_price],
-            "spread": self.ask_price - self.bid_price,
-        }
+
+    def spread(self) -> float:
+        return self.ask_price - self.bid_price  # type: ignore
+
+    def summarize(self):
+        return OrderBookSummary(
+            bid_price=self.bid_price,
+            bid_size=self.bids[self.bid_price],
+            ask_price=self.ask_price,
+            ask_size=self.asks[self.ask_price],
+            spread=self.spread(),
+        )
 
 
-def update_orderbook(orderbook, new_order):
-    spread = orderbook.update(new_order)
-    return orderbook, spread
+flow = Dataflow("orderbook")
+inp = op.input(
+    "input", flow, CoinbaseSource(["BTC-USD", "ETH-USD", "BTC-EUR", "ETH-EUR"])
+)
+# ('BTC-USD', {
+#     'type': 'l2update',
+#     'product_id': 'BTC-USD',
+#     'changes': [['buy', '36905.39', '0.00334873']],
+#     'time': '2022-05-05T17:25:09.072519Z',
+# })
 
 
-flow.stateful_map("order_book", lambda: OrderBook(), update_orderbook)
+def mapper(state, value):
+    if state is None:
+        state = OrderBookState()
+
+    state.update(value)
+    return (state, state.summarize())
+
+
+stats = op.stateful_map("order_book", inp, mapper)
 # ('BTC-USD', (36905.39, 0.00334873, 36905.4, 1.6e-05, 0.010000000002037268))
-flow.filter(
-    lambda x: x[-1]["spread"] / x[-1]["ask"] > 0.0001
-)  # filter on 0.1% spread as a per
 
-flow.output("out", StdOutput())
+
+# filter on 0.1% spread as a per
+def just_large_spread(prod_summary):
+    product, summary = prod_summary
+    return summary.spread / summary.ask_price > 0.0001
+
+
+state = op.filter("big_spread", stats, just_large_spread)
+op.output("out", stats, StdOutSink())
