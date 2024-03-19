@@ -62,13 +62,41 @@ Alright, let's get started!
 
 ## ****Websocket Input****
 
-Our goal is to build a scalable system that can monitor multiple cryptocurrency pairs across different workers in real time. We are going to build an asynchronous function that will connect to the Coinbase Pro websocket and then stream the data to our dataflow. We will use the `websockets` Python library to connect to the websocket and then we will use the `bytewax` library to stream the data to our dataflow.
+Our goal is to build a scalable system that can monitor multiple cryptocurrency pairs across different workers in real time. By crafting an asynchronous function to connect to the Coinbase Pro WebSocket, we facilitate streaming of cryptocurrency data into our dataflow. This process involves the `websockets` Python library for WebSocket connections and `bytewax` for dataflow integration.
+
+The function `_ws_agen` inputs cryptocurrency pair identifiers (e.g., `["BTC-USD", "ETH-USD"]`), establishing a connection to Coinbase Pro's WebSocket. It subscribes to the `level2_batch` channel for live order book updates, sending a JSON subscription message and awaiting a confirmation response with `ws.recv()`.
 
 https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L15-L31
 
-Now that we have our websocket based data generator built, we will our dataflow. Since we're using a `StatelessSource`, we'll create a `DynamicInput` subclass called `CoinbaseInput`. An instance of `CoinbaseInput` will be constructed on each worker. In the `build` method, we receive information about which worker we are: `worker_index` and the total number of workers (`worker_count`). We have added some custom code in order to distribute the currency pairs with the logic. It should be noted that if you run more than one worker with only one currency pair, the other workers will not be used.
+To efficiently process and manage this data, we implement the `CoinbasePartition` class, extending Bytewax's `StatefulSourcePartition`. 
 
-https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L30-L40
+This enables:
+
+* State Management: Maintaining state across data batches.
+* Parallel Processing: Facilitating data processing across multiple workers for each cryptocurrency pair, enhancing scalability.
+* Taking snapshots for Fault Tolerance: Allowing state capture for reliability.
+
+Within `CoinbasePartition`, `_ws_agen` is used for data fetching through `self._batcher` - in the code we specify batching incoming data every 0.5 seconds or upon receiving 100 messages, optimizing data processing and state management. This structure ensures an efficient, scalable, and fault-tolerant system for real-time cryptocurrency market monitoring.
+
+https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L34-L44
+
+In this section we defined the key building blocks to enable asynchronous WebSocket connections and efficient data processing. Before we can establish a dataflow to maintain the order book, we need to define the data classes - this will enable a structured approach to data processing and management. Let's take a look at this in the next section. 
+
+## Defining data classes
+
+Through the Python `dataclasses` library we can establish a structured approach to data processing and management. This is particularly useful for maintaining the order book, as it allows us to define the structure of the data we are working with. As part of this approach we define three data classes:
+
+* `CoinbaseSource`: Serves as a source for partitioning data based on cryptocurrency product IDs. It is crucial for organizing and distributing the data flow across multiple workers, facilitating parallel processing of cryptocurrency pairs.
+
+* `OrderBookSummary`: Summarizes the state of an order book at a point in time, encapsulating the bid and ask prices, sizes, and the spread. This class is immutable (`frozen=True`), ensuring that each instance is a snapshot that cannot be altered, which is essential for accurate historical analysis and decision-making.
+
+* `OrderBookState`: Maintains the current state of the order book, including all bids and asks. It allows for dynamic updates as new market data arrives, keeping track of the best bid and ask prices and their respective sizes.
+
+We can see the implementation of these data classes in the code below:
+
+https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L46-L142
+
+In this section, we have defined the data classes that will enable us to maintain the order book in real time. These classes will be used to structure the data flow and manage the state of the order book. Now that we have defined the data classes, we can proceed to construct the dataflow to maintain the order book.
 
 ## Constructing The Dataflow
 
