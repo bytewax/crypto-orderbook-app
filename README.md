@@ -68,13 +68,7 @@ The function `_ws_agen` inputs cryptocurrency pair identifiers (e.g., `["BTC-USD
 
 https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L15-L31
 
-To efficiently process and manage this data, we implement the `CoinbasePartition` class, extending Bytewax's `StatefulSourcePartition`. 
-
-This enables:
-
-* State Management: Maintaining state across data batches.
-* Parallel Processing: Facilitating data processing across multiple workers for each cryptocurrency pair, enhancing scalability.
-* Taking snapshots for Fault Tolerance: Allowing state capture for reliability.
+To efficiently process and manage this data, we implement the `CoinbasePartition` class, extending Bytewax's `StatefulSourcePartition`. This enables us to obtain the current orderbook at the beginning of the stream when we subscribe.
 
 Within `CoinbasePartition`, `_ws_agen` is used for data fetching through `self._batcher` - in the code we specify batching incoming data every 0.5 seconds or upon receiving 100 messages, optimizing data processing and state management. This structure ensures an efficient, scalable, and fault-tolerant system for real-time cryptocurrency market monitoring.
 
