@@ -21,7 +21,7 @@ We are going to:
 ## ****Prerequisites****
 
 **Python modules**
-bytewax==0.18.*
+bytewax==0.19
 websocket-client
 
 ## Your Takeaway
@@ -106,13 +106,16 @@ The resulting initialization and data structure output looks as follows:
 
 https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L145-L154
 
-Now that we have input for our Dataflow, we will establish a dataflow pipeline for processing live cryptocurrency order book updates. We will focus on analysis and data filtration based on order book spreads. 
+Now that we have input for our Dataflow, we will establish a dataflow pipeline for processing live cryptocurrency order book updates. We will focus on analysis and data filtration based on order book spreads. Our goal is for the pipeline to extract and highlight trading opportunities through the analysis of spreads. Let's take a look at key components of the dataflow pipeline:
 
-## **Output**
+The `mapper ` function updates and summarizes the order book state, ensuring its an `OrderBookState` object and applying new data updates. The result is a state-summary tuple with key metrics like the best bid and ask prices, sizes, and the spread. We can then use `op.stateful_map` on our `'order_book'` dataflow to apply the `mapper` function to each incoming data batch.
 
-We have successfully created a websocket connection, built our orderbook and then analyzed the order book, filtering down to the important spreads. The final steps are to configure some output and to run it. We will use the `output` operator, with the built-in `StdOutput` class to write to standard out.
+https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L157-L166
 
-https://github.com/bytewax/crypto-orderbook-app/blob/049229fa01184127658d40d3b47638232038371b/dataflow.py#L134
+The last step is to filter the summaries by spread percentage, with a focus on identifying significant spreads greater than 0.1% of the ask price - we will use this as a proxy for trading opportunities. We will define the function and use `op.filter` to apply the filter to summaries from the `'order_book'` dataflow.
+
+https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L170-L176
+
 
 ## **Executing the Dataflow**
 
@@ -122,13 +125,12 @@ Now we can run our completed dataflow:
 > python -m bytewax.run dataflow:flow
 ```
 
-Eventually, if the spread is greater than $5, we will see some output similar to what is below.
+This will process real-time order book data for three cryptocurrency pairs: BTC-USD, ETH-EUR, and ETH-USD. Each summary provided detailed insights into the bid and ask sides of the market, including prices and sizes.
 
 ```bash
-{"type":"subscriptions","channels":[{"name":"level2","product_ids":["BTC-USD"]}]}
-('BTC-USD', (38590.1, 0.00945844, 38596.73, 0.01347429, 6.630000000004657))
-('BTC-USD', (38590.1, 0.00945844, 38597.13, 0.02591147, 7.029999999998836))
-('BTC-USD', (38590.1, 0.00945844, 38597.13, 0.02591147, 7.029999999998836))
+('BTC-EUR', OrderBookSummary(bid_price=60152.78, bid_size=0.0104, ask_price=60173.35, ask_size=0.02238611, spread=20.56999999999971))
+('BTC-USD', OrderBookSummary(bid_price=65677.38, bid_size=0.05, ask_price=65368.71, ask_size=0.001663, spread=-308.67000000000553))
+('ETH-EUR', OrderBookSummary(bid_price=3095.16, bid_size=0.20712451, ask_price=3079.9, ask_size=0.14696149, spread=-15.259999999999764))
 ```
 
 ## Summary

@@ -36,7 +36,7 @@ class CoinbasePartition(StatefulSourcePartition):
         agen = _ws_agen(product_id)
         self._batcher = batch_async(agen, timedelta(seconds=0.5), 100)
 
-    def next_batch(self, _sched):
+    def next_batch(self):
         return next(self._batcher)
 
     def snapshot(self):
@@ -162,11 +162,11 @@ def mapper(state, value):
     return (state, state.summarize())
 
 
-stats = op.stateful_map("order_book", inp, mapper)
+stats = op.stateful_map("orderbook", inp, mapper)
 # ('BTC-USD', (36905.39, 0.00334873, 36905.4, 1.6e-05, 0.010000000002037268))
 
 
-# filter on 0.1% spread as a per
+# # filter on 0.1% spread as a per
 def just_large_spread(prod_summary):
     product, summary = prod_summary
     return summary.spread / summary.ask_price > 0.0001
