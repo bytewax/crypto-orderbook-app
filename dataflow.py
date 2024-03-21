@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-# pip install websockets
+
 import websockets
 from bytewax import operators as op
 from bytewax.connectors.stdio import StdOutSink
