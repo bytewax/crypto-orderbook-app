@@ -66,13 +66,13 @@ Our goal is to build a scalable system that can monitor multiple cryptocurrency 
 
 The function `_ws_agen` inputs cryptocurrency pair identifiers (e.g., `["BTC-USD", "ETH-USD"]`), establishing a connection to Coinbase Pro's WebSocket. It subscribes to the `level2_batch` channel for live order book updates, sending a JSON subscription message and awaiting a confirmation response with `ws.recv()`.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L15-L31
+https://github.com/bytewax/crypto-orderbook-app/blob/989e563c679b36cec157229742b0ee3c473e8eec/dataflow.py#L14-L30
 
 To efficiently process and manage this data, we implement the `CoinbasePartition` class, extending Bytewax's `StatefulSourcePartition`. This enables us to obtain the current orderbook at the beginning of the stream when we subscribe.
 
 Within `CoinbasePartition`, `_ws_agen` is used for data fetching through `self._batcher` - in the code we specify batching incoming data every 0.5 seconds or upon receiving 100 messages, optimizing data processing and state management. This structure ensures an efficient, scalable, and fault-tolerant system for real-time cryptocurrency market monitoring.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L34-L44
+https://github.com/bytewax/crypto-orderbook-app/blob/989e563c679b36cec157229742b0ee3c473e8eec/dataflow.py#L33-L43
 
 In this section we defined the key building blocks to enable asynchronous WebSocket connections and efficient data processing. Before we can establish a dataflow to maintain the order book, we need to define the data classes - this will enable a structured approach to data processing and management. Let's take a look at this in the next section. 
 
@@ -88,7 +88,7 @@ Through the Python `dataclasses` library we can establish a structured approach 
 
 We can see the implementation of these data classes in the code below:
 
-https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L46-L142
+https://github.com/bytewax/crypto-orderbook-app/blob/989e563c679b36cec157229742b0ee3c473e8eec/dataflow.py#L45-L112
 
 In this section, we have defined the data classes that will enable us to maintain the order book in real time. These classes will be used to structure the data flow and manage the state of the order book. Now that we have defined the data classes, we can proceed to construct the dataflow to maintain the order book.
 
@@ -98,17 +98,17 @@ Before we get to the exciting part of our order book dataflow, we need to create
 
 The resulting initialization and data structure output looks as follows:
 
-https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L145-L154
+https://github.com/bytewax/crypto-orderbook-app/blob/989e563c679b36cec157229742b0ee3c473e8eec/dataflow.py#L114-L117
 
 Now that we have input for our Dataflow, we will establish a dataflow pipeline for processing live cryptocurrency order book updates. We will focus on analysis and data filtration based on order book spreads. Our goal is for the pipeline to extract and highlight trading opportunities through the analysis of spreads. Let's take a look at key components of the dataflow pipeline:
 
 The `mapper ` function updates and summarizes the order book state, ensuring its an `OrderBookState` object and applying new data updates. The result is a state-summary tuple with key metrics like the best bid and ask prices, sizes, and the spread. We can then use `op.stateful_map` on our `'order_book'` dataflow to apply the `mapper` function to each incoming data batch.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L157-L166
+https://github.com/bytewax/crypto-orderbook-app/blob/989e563c679b36cec157229742b0ee3c473e8eec/dataflow.py#L126-L135
 
-The last step is to filter the summaries by spread percentage, with a focus on identifying significant spreads greater than 0.1% of the ask price - we will use this as a proxy for trading opportunities. We will define the function and use `op.filter` to apply the filter to summaries from the `'order_book'` dataflow.
+The last step is to filter the summaries by spread percentage, with a focus on identifying significant spreads greater than 0.1% of the ask price - we will use this as a proxy for trading opportunities. We will define the function and use `op.filter` to apply the filter to summaries from the `'orderbook'` dataflow.
 
-https://github.com/bytewax/crypto-orderbook-app/blob/b61e9101cbf11dcb05209ffc6c585148fddea312/dataflow.py#L170-L176
+https://github.com/bytewax/crypto-orderbook-app/blob/989e563c679b36cec157229742b0ee3c473e8eec/dataflow.py#L138-L145
 
 
 ## **Executing the Dataflow**
