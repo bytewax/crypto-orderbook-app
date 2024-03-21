@@ -1,2 +1,2 @@
-bytewax==0.16
+bytewax==0.19
 websocket-client
