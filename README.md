@@ -21,8 +21,8 @@ We are going to:
 ## ****Prerequisites****
 
 **Python modules**
-bytewax==0.19
-websocket-client
+- bytewax==0.19
+- websocket-client
 
 ## Your Takeaway
 
